@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>나의 여행 기록</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f4f8;min-height:100vh}
+#app{max-width:1100px;margin:0 auto;background:#fff;min-height:100vh;box-shadow:0 0 40px rgba(0,0,0,.08)}
+.hdr{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid #e2e8f0;background:#fff}
+.logo{font-size:18px;font-weight:600;color:#1e293b;letter-spacing:-.3px}
+.logo b{color:#1d4ed8;font-weight:600}
+.stats{display:flex;gap:20px}
+.stat{font-size:13px;color:#64748b;display:flex;align-items:center;gap:5px}
+.stat strong{color:#1e293b;font-weight:600}
+.body{display:grid;grid-template-columns:1fr 320px;height:calc(100vh - 57px)}
+.map-wrap{position:relative;background:#dbeafe;overflow:hidden;border-right:1px solid #e2e8f0}
+#map-svg{width:100%;height:100%;display:block}
+.country-path{cursor:pointer;stroke:#fff;stroke-width:0.4;fill:#93c5fd;transition:fill .12s}
+.country-path:hover{fill:#60a5fa}
+.country-path.visited{fill:#1d4ed8}
+.country-path.selected{fill:#2563eb;stroke:#1e40af;stroke-width:1.2}
+.country-path.antarctica{fill:#cbd5e1;cursor:default}
+.country-path.antarctica:hover{fill:#cbd5e1}
+.tooltip{position:absolute;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:5px 12px;font-size:12px;color:#1e293b;pointer-events:none;opacity:0;transition:opacity .1s;white-space:nowrap;z-index:10;box-shadow:0 2px 8px rgba(0,0,0,.1)}
+.map-legend{position:absolute;bottom:14px;left:14px;display:flex;gap:10px;background:rgba(255,255,255,.9);border-radius:8px;padding:6px 12px;border:1px solid #e2e8f0}
+.leg-item{display:flex;align-items:center;gap:5px;font-size:11px;color:#475569}
+.leg-dot{width:10px;height:10px;border-radius:2px}
+.map-hint{position:absolute;bottom:14px;right:14px;font-size:11px;color:#3b82f6;background:rgba(255,255,255,.9);padding:5px 10px;border-radius:20px;border:1px solid #bfdbfe}
+.sidebar{display:flex;flex-direction:column;background:#fff;overflow-y:auto;height:100%}
+.empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:2rem;text-align:center;color:#94a3b8;font-size:14px;min-height:200px}
+.empty svg{opacity:.3}
+.panel{display:none;flex-direction:column}
+.panel.show{display:flex}
+.p-head{padding:14px 16px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between}
+.p-title{font-size:16px;font-weight:600;display:flex;align-items:center;gap:8px;color:#1e293b}
+.p-flag{font-size:22px}
+.btn-x{background:none;border:none;cursor:pointer;color:#94a3b8;font-size:18px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:6px;transition:all .1s}
+.btn-x:hover{background:#f1f5f9;color:#475569}
+.tabs{display:flex;border-bottom:1px solid #e2e8f0}
+.tab{flex:1;padding:9px 4px;font-size:12px;background:none;border:none;cursor:pointer;color:#94a3b8;border-bottom:2px solid transparent;display:flex;align-items:center;justify-content:center;gap:4px;transition:all .12s;font-family:inherit}
+.tab.on{color:#1d4ed8;border-bottom-color:#2563eb;font-weight:500}
+.tab:hover:not(.on){background:#f8fafc;color:#475569}
+.tc{padding:14px 16px;display:none}
+.tc.on{display:block}
+.fg{margin-bottom:12px}
+.fl{font-size:11px;color:#64748b;margin-bottom:4px;display:block;font-weight:500}
+.fi,.fta{width:100%;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:7px 10px;font-size:13px;color:#1e293b;font-family:inherit;transition:border-color .1s}
+.fi:focus,.fta:focus{outline:none;border-color:#3b82f6;background:#fff}
+.fta{min-height:90px;resize:none;line-height:1.5}
+.drow{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.stars{display:flex;gap:4px;margin-top:3px}
+.star{font-size:22px;cursor:pointer;color:#cbd5e1;transition:color .1s;line-height:1;user-select:none}
+.star.lit{color:#f59e0b}
+.btn-save{width:100%;padding:9px;background:#1d4ed8;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;margin-top:8px;display:flex;align-items:center;justify-content:center;gap:6px;transition:background .12s;font-family:inherit}
+.btn-save:hover{background:#1e40af}
+.btn-mark{width:100%;padding:7px;background:none;color:#1d4ed8;border:1px solid #1d4ed8;border-radius:8px;font-size:12px;cursor:pointer;margin-top:8px;display:flex;align-items:center;justify-content:center;gap:5px;transition:all .12s;font-family:inherit}
+.btn-mark:hover{background:#eff6ff}
+.btn-mark.off{color:#dc2626;border-color:#dc2626}
+.btn-mark.off:hover{background:#fef2f2}
+.photos-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px}
+.pt{aspect-ratio:1;background:#f1f5f9;border-radius:8px;overflow:hidden;border:1px solid #e2e8f0;position:relative}
+.pt img{width:100%;height:100%;object-fit:cover}
+.pt .rm{position:absolute;top:3px;right:3px;background:rgba(0,0,0,.55);color:#fff;border:none;border-radius:50%;width:18px;height:18px;font-size:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .1s}
+.pt:hover .rm{opacity:1}
+.add-ph{aspect-ratio:1;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;color:#94a3b8;font-size:11px;gap:4px;transition:all .12s}
+.add-ph:hover{border-color:#3b82f6;color:#2563eb;background:#eff6ff}
+.add-ph .ico{font-size:22px}
+.sched-list{display:flex;flex-direction:column;gap:7px;margin-bottom:10px}
+.sched-item{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:9px 11px;display:flex;gap:9px;align-items:flex-start}
+.s-day{font-size:11px;color:#1d4ed8;font-weight:600;min-width:34px;padding-top:1px}
+.s-txt{font-size:12px;color:#334155;flex:1;line-height:1.5}
+.s-del{background:none;border:none;cursor:pointer;color:#94a3b8;font-size:14px;display:flex;align-items:center;padding:0;transition:color .1s}
+.s-del:hover{color:#dc2626}
+.add-row{display:flex;gap:6px;margin-top:4px}
+.day-in{width:56px;flex-shrink:0}
+.btn-add{padding:6px 10px;background:none;border:1px solid #e2e8f0;border-radius:8px;font-size:12px;cursor:pointer;color:#64748b;display:flex;align-items:center;transition:all .12s;font-family:inherit}
+.btn-add:hover{border-color:#3b82f6;color:#1d4ed8}
+.vlist{padding:12px 16px;border-top:1px solid #e2e8f0}
+.vlist-hd{font-size:12px;font-weight:600;color:#64748b;margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px}
+.vi{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #f1f5f9;cursor:pointer;transition:all .1s;border-radius:6px}
+.vi:last-child{border-bottom:none}
+.vi:hover{padding-left:4px}
+.vi:hover .vi-name{color:#1d4ed8}
+.vi-flag{font-size:17px}
+.vi-name{font-size:13px;color:#1e293b;flex:1;font-weight:500}
+.vi-date{font-size:11px;color:#94a3b8}
+.no-v{font-size:13px;color:#94a3b8;text-align:center;padding:1rem 0}
+.loading{display:flex;align-items:center;justify-content:center;height:100%;font-size:14px;color:#64748b;gap:8px;flex-direction:column}
+.spin{animation:spin 1s linear infinite;font-size:24px;display:inline-block}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media(max-width:768px){
+  .body{grid-template-columns:1fr;grid-template-rows:50vh 1fr}
+  .map-wrap{height:50vh}
+  .sidebar{height:auto;overflow-y:visible}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="hdr">
+    <div class="logo">✈ 나의 <b>여행</b> 기록</div>
+    <div class="stats">
+      <div class="stat">🗺 방문 <strong id="vcnt">0</strong>개국</div>
+      <div class="stat">📷 사진 <strong id="pcnt">0</strong>장</div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="map-wrap" id="map-wrap">
+      <div class="loading" id="loading">
+        <span class="spin">🌍</span>
+        <span>지도 불러오는 중...</span>
+      </div>
+      <svg id="map-svg" viewBox="0 0 960 560" style="display:none;width:100%;height:100%"></svg>
+      <div class="tooltip" id="tip"></div>
+      <div class="map-legend">
+        <div class="leg-item"><div class="leg-dot" style="background:#93c5fd"></div>미방문</div>
+        <div class="leg-item"><div class="leg-dot" style="background:#1d4ed8"></div>방문</div>
+        <div class="leg-item"><div class="leg-dot" style="background:#2563eb;border:1.5px solid #1e40af"></div>선택</div>
+        <div class="leg-item"><div class="leg-dot" style="background:#cbd5e1"></div>남극</div>
+      </div>
+      <div class="map-hint">🖱 국가를 클릭해 기록 추가</div>
+    </div>
+    <div class="sidebar" id="sidebar">
+      <div class="empty" id="empty">
+        <div style="font-size:48px;opacity:.25">🌍</div>
+        <div style="font-weight:600;color:#475569;font-size:15px">국가를 선택하세요</div>
+        <div style="color:#94a3b8">지도에서 나라를 클릭하면<br>여행 기록을 남길 수 있어요</div>
+      </div>
+      <div class="panel" id="panel">
+        <div class="p-head">
+          <div class="p-title"><span class="p-flag" id="pflag">🌍</span><span id="pname"></span></div>
+          <button class="btn-x" id="btnX" title="닫기">✕</button>
+        </div>
+        <div class="tabs">
+          <button class="tab on" data-t="info">ℹ️ 정보</button>
+          <button class="tab" data-t="photos">📷 사진</button>
+          <button class="tab" data-t="sched">📅 일정</button>
+          <button class="tab" data-t="memo">📝 메모</button>
+        </div>
+        <div class="tc on" id="tc-info">
+          <div class="fg"><label class="fl">여행 제목</label><input class="fi" id="i-title" placeholder="예: 파리 7일 여행"></div>
+          <div class="drow">
+            <div class="fg"><label class="fl">출발일</label><input class="fi" type="date" id="i-start"></div>
+            <div class="fg"><label class="fl">귀국일</label><input class="fi" type="date" id="i-end"></div>
+          </div>
+          <div class="fg"><label class="fl">평점</label><div class="stars" id="stars"></div></div>
+          <button class="btn-save" id="btnSave">💾 저장하기</button>
+          <button class="btn-mark" id="btnMark">✅ 방문 완료로 표시</button>
+        </div>
+        <div class="tc" id="tc-photos">
+          <div class="photos-grid" id="phgrid"></div>
+          <input type="file" id="phinput" accept="image/*" multiple style="display:none">
+          <div style="font-size:11px;color:#94a3b8;margin-top:4px">+ 버튼을 클릭하여 사진 업로드</div>
+        </div>
+        <div class="tc" id="tc-sched">
+          <div class="sched-list" id="slist"></div>
+          <div class="add-row">
+            <input class="fi day-in" id="iday" placeholder="Day 1">
+            <input class="fi" id="itxt" placeholder="일정 내용 입력" style="flex:1">
+            <button class="btn-add" id="btnAddS">＋</button>
+          </div>
+        </div>
+        <div class="tc" id="tc-memo">
+          <textarea class="fta" id="imemo" placeholder="감상, 맛집, 팁, 추천 코스 등 자유롭게 기록해보세요..." style="min-height:160px;width:100%"></textarea>
+          <button class="btn-save" id="btnSaveMemo" style="margin-top:10px">💾 메모 저장</button>
+        </div>
+      </div>
+      <div class="vlist" id="vlist">
+        <div class="vlist-hd">🗺 방문한 나라</div>
+        <div class="no-v" id="nov">아직 방문한 나라가 없어요</div>
+        <div id="vitems"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
+<script>
+const ISO_MAP = {
+  4:'아프가니스탄',8:'알바니아',12:'알제리',24:'앙골라',32:'아르헨티나',
+  36:'호주',40:'오스트리아',50:'방글라데시',56:'벨기에',64:'부탄',
+  68:'볼리비아',76:'브라질',100:'불가리아',104:'미얀마',116:'캄보디아',
+  120:'카메룬',124:'캐나다',152:'칠레',156:'중국',170:'콜롬비아',
+  178:'콩고',180:'콩고민주공화국',188:'코스타리카',191:'크로아티아',
+  192:'쿠바',203:'체코',204:'베냉',208:'덴마크',218:'에콰도르',
+  226:'적도기니',231:'에티오피아',232:'에리트레아',246:'핀란드',
+  250:'프랑스',262:'지부티',266:'가봉',268:'조지아',276:'독일',
+  288:'가나',300:'그리스',320:'과테말라',324:'기니',340:'온두라스',
+  348:'헝가리',356:'인도',360:'인도네시아',364:'이란',368:'이라크',
+  372:'아일랜드',376:'이스라엘',380:'이탈리아',392:'일본',398:'카자흐스탄',
+  400:'요르단',404:'케냐',408:'북한',410:'대한민국',414:'쿠웨이트',
+  417:'키르기스스탄',418:'라오스',422:'레바논',430:'라이베리아',
+  434:'리비아',450:'마다가스카르',454:'말라위',458:'말레이시아',
+  466:'말리',478:'모리타니',484:'멕시코',496:'몽골',504:'모로코',
+  508:'모잠비크',512:'오만',516:'나미비아',524:'네팔',528:'네덜란드',
+  554:'뉴질랜드',558:'니카라과',566:'나이지리아',578:'노르웨이',
+  586:'파키스탄',591:'파나마',598:'파푸아뉴기니',600:'파라과이',
+  604:'페루',608:'필리핀',616:'폴란드',620:'포르투갈',634:'카타르',
+  642:'루마니아',643:'러시아',646:'르완다',682:'사우디아라비아',
+  686:'세네갈',688:'세르비아',694:'시에라리온',703:'슬로바키아',
+  705:'슬로베니아',706:'소말리아',710:'남아프리카공화국',716:'짐바브웨',
+  724:'스페인',729:'수단',752:'스웨덴',756:'스위스',760:'시리아',
+  762:'타지키스탄',764:'태국',768:'토고',788:'튀니지',792:'터키',
+  795:'투르크메니스탄',800:'우간다',804:'우크라이나',818:'이집트',
+  784:'아랍에미리트',826:'영국',840:'미국',858:'우루과이',
+  860:'우즈베키스탄',862:'베네수엘라',704:'베트남',887:'예멘',
+  894:'잠비아',31:'아제르바이잔',51:'아르메니아',140:'중앙아프리카공화국',
+  144:'스리랑카',148:'차드',275:'팔레스타인',384:'코트디부아르',
+  388:'자메이카',854:'부르키나파소',108:'부룬디',10:'남극대륙'
+};
+const FLAGS = {
+  4:'🇦🇫',8:'🇦🇱',12:'🇩🇿',24:'🇦🇴',32:'🇦🇷',36:'🇦🇺',40:'🇦🇹',
+  50:'🇧🇩',56:'🇧🇪',68:'🇧🇴',76:'🇧🇷',100:'🇧🇬',104:'🇲🇲',116:'🇰🇭',
+  120:'🇨🇲',124:'🇨🇦',152:'🇨🇱',156:'🇨🇳',170:'🇨🇴',180:'🇨🇩',
+  191:'🇭🇷',192:'🇨🇺',203:'🇨🇿',208:'🇩🇰',218:'🇪🇨',231:'🇪🇹',
+  246:'🇫🇮',250:'🇫🇷',276:'🇩🇪',288:'🇬🇭',300:'🇬🇷',348:'🇭🇺',
+  356:'🇮🇳',360:'🇮🇩',364:'🇮🇷',368:'🇮🇶',372:'🇮🇪',376:'🇮🇱',
+  380:'🇮🇹',392:'🇯🇵',398:'🇰🇿',404:'🇰🇪',408:'🇰🇵',410:'🇰🇷',
+  418:'🇱🇦',458:'🇲🇾',484:'🇲🇽',504:'🇲🇦',524:'🇳🇵',528:'🇳🇱',
+  554:'🇳🇿',566:'🇳🇬',578:'🇳🇴',586:'🇵🇰',604:'🇵🇪',608:'🇵🇭',
+  616:'🇵🇱',620:'🇵🇹',642:'🇷🇴',643:'🇷🇺',682:'🇸🇦',688:'🇷🇸',
+  703:'🇸🇰',705:'🇸🇮',710:'🇿🇦',716:'🇿🇼',724:'🇪🇸',752:'🇸🇪',
+  756:'🇨🇭',760:'🇸🇾',764:'🇹🇭',792:'🇹🇷',804:'🇺🇦',826:'🇬🇧',
+  840:'🇺🇸',858:'🇺🇾',862:'🇻🇪',704:'🇻🇳',887:'🇾🇪',894:'🇿🇲',
+  496:'🇲🇳',10:'🇦🇶'
+};
+const ANTARCTICA=10;
+let data={},sel=null,rating=0;
+function ld(){try{data=JSON.parse(localStorage.getItem('tw_v4')||'{}')}catch(e){data={}}}
+function sv(){try{localStorage.setItem('tw_v4',JSON.stringify(data))}catch(e){}}
+function init(id){if(!data[id])data[id]={visited:false,title:'',start:'',end:'',rating:0,photos:[],schedule:[],memo:''}}
+
+function renderMap(world){
+  const svg=d3.select('#map-svg');
+  const w=960,h=560;
+  const proj=d3.geoNaturalEarth1().scale(153).translate([w/2,h/2]).clipExtent([[0,0],[w,h]]);
+  const path=d3.geoPath().projection(proj);
+  const tip=document.getElementById('tip');
+  const wrap=document.getElementById('map-wrap');
+  svg.append('rect').attr('width',w).attr('height',h).attr('fill','#dbeafe');
+  svg.append('path').datum({type:'Sphere'}).attr('d',path).attr('fill','#dbeafe').attr('stroke','#93c5fd').attr('stroke-width','0.6');
+  svg.append('path').datum(topojson.feature(world,world.objects.land)).attr('d',path).attr('fill','#bfdbfe').attr('stroke','none');
+  const countries=topojson.feature(world,world.objects.countries).features;
+  svg.selectAll('.country-path').data(countries).join('path')
+    .attr('class',d=>{
+      const id=+d.id;
+      if(id===ANTARCTICA) return 'country-path antarctica';
+      let c='country-path';
+      if(data[id]?.visited) c+=' visited';
+      if(sel===id) c+=' selected';
+      return c;
+    })
+    .attr('d',path).attr('data-id',d=>d.id)
+    .on('mousemove',function(event,d){
+      const id=+d.id;
+      const name=ISO_MAP[id];
+      if(!name) return;
+      tip.textContent=(FLAGS[id]||'')+' '+name;
+      tip.style.opacity='1';
+      const r=wrap.getBoundingClientRect();
+      let lx=event.clientX-r.left+14;
+      let ty=event.clientY-r.top-36;
+      if(lx>r.width-130) lx=event.clientX-r.left-130;
+      if(ty<0) ty=event.clientY-r.top+14;
+      tip.style.left=lx+'px';
+      tip.style.top=ty+'px';
+    })
+    .on('mouseleave',()=>{tip.style.opacity='0'})
+    .on('click',function(event,d){
+      const id=+d.id;
+      if(!ISO_MAP[id]||id===ANTARCTICA) return;
+      sel=id;refreshPaths();openPanel(id);
+    });
+  svg.append('path')
+    .datum(topojson.mesh(world,world.objects.countries,(a,b)=>a!==b))
+    .attr('d',path).attr('fill','none').attr('stroke','#fff').attr('stroke-width','0.4');
+  svg.append('text').attr('x',w/2).attr('y',h-6).attr('text-anchor','middle').attr('font-size','10').attr('fill','#94a3b8').text('South Pole — Antarctica');
+  document.getElementById('loading').style.display='none';
+  document.getElementById('map-svg').style.display='block';
+}
+
+function refreshPaths(){
+  d3.selectAll('.country-path').attr('class',d=>{
+    const id=+d.id;
+    if(id===ANTARCTICA) return 'country-path antarctica';
+    let c='country-path';
+    if(data[id]?.visited) c+=' visited';
+    if(sel===id) c+=' selected';
+    return c;
+  });
+}
+function openPanel(id){
+  init(id);
+  const d=data[id];
+  document.getElementById('empty').style.display='none';
+  document.getElementById('panel').classList.add('show');
+  document.getElementById('pflag').textContent=FLAGS[id]||'🌍';
+  document.getElementById('pname').textContent=ISO_MAP[id]||'';
+  document.getElementById('i-title').value=d.title||'';
+  document.getElementById('i-start').value=d.start||'';
+  document.getElementById('i-end').value=d.end||'';
+  document.getElementById('imemo').value=d.memo||'';
+  rating=d.rating||0;renderStars(rating);renderPhotos();renderSched();refreshMark();setTab('info');
+}
+function setTab(t){
+  document.querySelectorAll('.tab').forEach(el=>el.classList.toggle('on',el.dataset.t===t));
+  document.querySelectorAll('.tc').forEach(el=>el.classList.toggle('on',el.id==='tc-'+t));
+}
+function renderStars(r){
+  const c=document.getElementById('stars');c.innerHTML='';
+  for(let i=1;i<=5;i++){
+    const s=document.createElement('span');s.className='star'+(i<=r?' lit':'');
+    s.textContent=i<=r?'★':'☆';
+    s.onclick=()=>{rating=i;renderStars(i)};
+    s.onmouseover=()=>renderStars(i);
+    c.onmouseleave=()=>renderStars(rating);
+    c.appendChild(s);
+  }
+}
+function renderPhotos(){
+  if(!sel) return;
+  const g=document.getElementById('phgrid');g.innerHTML='';
+  (data[sel].photos||[]).forEach((src,i)=>{
+    const d=document.createElement('div');d.className='pt';
+    const img=document.createElement('img');img.src=src;
+    const rm=document.createElement('button');rm.className='rm';rm.textContent='✕';rm.title='삭제';
+    rm.onclick=e=>{e.stopPropagation();data[sel].photos.splice(i,1);sv();renderPhotos();updateStats()};
+    d.appendChild(img);d.appendChild(rm);g.appendChild(d);
+  });
+  const ab=document.createElement('div');ab.className='add-ph';
+  ab.innerHTML='<span class="ico">+</span><span>사진 추가</span>';
+  ab.onclick=()=>document.getElementById('phinput').click();
+  g.appendChild(ab);
+}
+function renderSched(){
+  if(!sel) return;
+  const sl=document.getElementById('slist');sl.innerHTML='';
+  const list=data[sel].schedule||[];
+  if(!list.length){sl.innerHTML='<div style="font-size:13px;color:#94a3b8;padding:6px 0">일정을 추가해보세요</div>';return}
+  list.forEach((s,i)=>{
+    const el=document.createElement('div');el.className='sched-item';
+    el.innerHTML=`<span class="s-day">${s.day}</span><span class="s-txt">${s.text}</span><button class="s-del" title="삭제">✕</button>`;
+    el.querySelector('.s-del').onclick=()=>{data[sel].schedule.splice(i,1);sv();renderSched()};
+    sl.appendChild(el);
+  });
+}
+function refreshMark(){
+  const btn=document.getElementById('btnMark');
+  const v=data[sel]?.visited;
+  btn.className='btn-mark'+(v?' off':'');
+  btn.textContent=v?'❌ 방문 표시 해제':'✅ 방문 완료로 표시';
+}
+function updateStats(){
+  document.getElementById('vcnt').textContent=Object.values(data).filter(d=>d.visited).length;
+  document.getElementById('pcnt').textContent=Object.values(data).reduce((a,d)=>a+(d.photos?.length||0),0);
+}
+function renderVisited(){
+  const items=document.getElementById('vitems');
+  const nov=document.getElementById('nov');
+  const visited=Object.keys(data).filter(id=>data[id].visited)
+    .map(id=>({id:+id,name:ISO_MAP[+id],flag:FLAGS[+id]||'🌍',start:data[id].start}))
+    .filter(x=>x.name);
+  items.innerHTML='';
+  if(!visited.length){nov.style.display='';return}
+  nov.style.display='none';
+  visited.forEach(v=>{
+    const el=document.createElement('div');el.className='vi';
+    el.innerHTML=`<span class="vi-flag">${v.flag}</span><span class="vi-name">${v.name}</span><span class="vi-date">${v.start?v.start.replace(/-/g,'.'):''}</span>`;
+    el.onclick=()=>{sel=v.id;refreshPaths();openPanel(v.id)};
+    items.appendChild(el);
+  });
+}
+document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>setTab(t.dataset.t)));
+document.getElementById('btnX').onclick=()=>{
+  sel=null;refreshPaths();
+  document.getElementById('empty').style.display='flex';
+  document.getElementById('panel').classList.remove('show');
+};
+document.getElementById('btnSave').onclick=()=>{
+  if(!sel) return;
+  data[sel].title=document.getElementById('i-title').value;
+  data[sel].start=document.getElementById('i-start').value;
+  data[sel].end=document.getElementById('i-end').value;
+  data[sel].rating=rating;
+  sv();renderVisited();
+  const btn=document.getElementById('btnSave');
+  btn.textContent='✅ 저장됨!';
+  setTimeout(()=>btn.textContent='💾 저장하기',1500);
+};
+document.getElementById('btnSaveMemo').onclick=()=>{
+  if(!sel) return;
+  data[sel].memo=document.getElementById('imemo').value;
+  sv();
+  const btn=document.getElementById('btnSaveMemo');
+  btn.textContent='✅ 저장됨!';
+  setTimeout(()=>btn.textContent='💾 메모 저장',1500);
+};
+document.getElementById('btnMark').onclick=()=>{
+  if(!sel) return;
+  data[sel].visited=!data[sel].visited;
+  sv();refreshMark();refreshPaths();updateStats();renderVisited();
+};
+document.getElementById('phinput').onchange=function(){
+  if(!sel) return;
+  Array.from(this.files).forEach(f=>{
+    const r=new FileReader();
+    r.onload=e=>{data[sel].photos.push(e.target.result);sv();renderPhotos();updateStats()};
+    r.readAsDataURL(f);
+  });
+  this.value='';
+};
+document.getElementById('btnAddS').onclick=()=>{
+  if(!sel) return;
+  const day=document.getElementById('iday').value.trim();
+  const txt=document.getElementById('itxt').value.trim();
+  if(!txt) return;
+  data[sel].schedule.push({day:day||'Day ?',text:txt});
+  sv();renderSched();
+  document.getElementById('iday').value='';
+  document.getElementById('itxt').value='';
+};
+document.getElementById('itxt').onkeydown=e=>{if(e.key==='Enter')document.getElementById('btnAddS').click()};
+
+ld();updateStats();renderVisited();
+d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(world=>{
+  renderMap(world);
+}).catch(()=>{
+  document.getElementById('loading').innerHTML='<span>⚠️ 지도 로드 실패. 새로고침 해주세요.</span>';
+});
+</script>
+</body>
+</html>
