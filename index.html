@@ -16,8 +16,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .stat strong{color:#1e293b;font-weight:600}
 .body{display:grid;grid-template-columns:1fr 320px;height:calc(100vh - 57px)}
 .map-wrap{position:relative;background:#dbeafe;overflow:hidden;border-right:1px solid #e2e8f0}
-#map-svg{width:100%;height:100%;display:block}
+#map-svg{width:100%;height:100%;display:block;cursor:grab}
+#map-svg.dragging{cursor:grabbing}
 .country-path{cursor:pointer;stroke:#fff;stroke-width:0.4;fill:#93c5fd;transition:fill .12s}
+.zoom-controls{position:absolute;top:12px;right:12px;display:flex;flex-direction:column;gap:4px;z-index:5}
+.zoom-btn{width:28px;height:28px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#475569;box-shadow:0 1px 4px rgba(0,0,0,.1);transition:all .12s;line-height:1}
+.zoom-btn:hover{background:#f1f5f9;border-color:#cbd5e1;color:#1e293b}
+.zoom-btn.reset{font-size:11px;font-weight:600;letter-spacing:-.3px}
 .country-path:hover{fill:#60a5fa}
 .country-path.visited{fill:#1d4ed8}
 .country-path.selected{fill:#2563eb;stroke:#1e40af;stroke-width:1.2}
@@ -113,14 +118,18 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         <span>지도 불러오는 중...</span>
       </div>
       <svg id="map-svg" viewBox="0 0 960 560" style="display:none;width:100%;height:100%"></svg>
-      <div class="tooltip" id="tip"></div>
+      <div class="zoom-controls">
+        <button class="zoom-btn" id="zoomIn" title="확대">+</button>
+        <button class="zoom-btn" id="zoomOut" title="축소">−</button>
+        <button class="zoom-btn reset" id="zoomReset" title="초기화">⊙</button>
+      </div>
       <div class="map-legend">
         <div class="leg-item"><div class="leg-dot" style="background:#93c5fd"></div>미방문</div>
         <div class="leg-item"><div class="leg-dot" style="background:#1d4ed8"></div>방문</div>
         <div class="leg-item"><div class="leg-dot" style="background:#2563eb;border:1.5px solid #1e40af"></div>선택</div>
         <div class="leg-item"><div class="leg-dot" style="background:#cbd5e1"></div>남극</div>
       </div>
-      <div class="map-hint">🖱 국가를 클릭해 기록 추가</div>
+      <div class="map-hint">🖱 클릭 선택 · 스크롤 확대 · 드래그 이동 · 더블클릭 해당 국가 확대</div>
     </div>
     <div class="sidebar" id="sidebar">
       <div class="empty" id="empty">
@@ -233,6 +242,8 @@ function ld(){try{data=JSON.parse(localStorage.getItem('tw_v4')||'{}')}catch(e){
 function sv(){try{localStorage.setItem('tw_v4',JSON.stringify(data))}catch(e){}}
 function init(id){if(!data[id])data[id]={visited:false,title:'',start:'',end:'',rating:0,photos:[],schedule:[],memo:''}}
 
+let zoomBehavior=null;
+
 function renderMap(world){
   const svg=d3.select('#map-svg');
   const w=960,h=560;
@@ -240,11 +251,16 @@ function renderMap(world){
   const path=d3.geoPath().projection(proj);
   const tip=document.getElementById('tip');
   const wrap=document.getElementById('map-wrap');
-  svg.append('rect').attr('width',w).attr('height',h).attr('fill','#dbeafe');
-  svg.append('path').datum({type:'Sphere'}).attr('d',path).attr('fill','#dbeafe').attr('stroke','#93c5fd').attr('stroke-width','0.6');
-  svg.append('path').datum(topojson.feature(world,world.objects.land)).attr('d',path).attr('fill','#bfdbfe').attr('stroke','none');
+
+  // 줌 가능한 그룹 — 모든 지도 요소를 이 안에 넣음
+  const g=svg.append('g').attr('id','map-g');
+
+  g.append('rect').attr('width',w).attr('height',h).attr('fill','#dbeafe');
+  g.append('path').datum({type:'Sphere'}).attr('d',path).attr('fill','#dbeafe').attr('stroke','#93c5fd').attr('stroke-width','0.6');
+  g.append('path').datum(topojson.feature(world,world.objects.land)).attr('d',path).attr('fill','#bfdbfe').attr('stroke','none');
+
   const countries=topojson.feature(world,world.objects.countries).features;
-  svg.selectAll('.country-path').data(countries).join('path')
+  g.selectAll('.country-path').data(countries).join('path')
     .attr('class',d=>{
       const id=+d.id;
       if(id===ANTARCTICA) return 'country-path antarctica';
@@ -270,20 +286,77 @@ function renderMap(world){
     })
     .on('mouseleave',()=>{tip.style.opacity='0'})
     .on('click',function(event,d){
+      // 드래그 후 클릭 무시 (5px 이상 움직이면 드래그로 판단)
+      if(event.defaultPrevented) return;
       const id=+d.id;
       if(!ISO_MAP[id]||id===ANTARCTICA) return;
       sel=id;refreshPaths();openPanel(id);
     });
-  svg.append('path')
+
+  g.append('path')
     .datum(topojson.mesh(world,world.objects.countries,(a,b)=>a!==b))
     .attr('d',path).attr('fill','none').attr('stroke','#fff').attr('stroke-width','0.4');
-  svg.append('text').attr('x',w/2).attr('y',h-6).attr('text-anchor','middle').attr('font-size','10').attr('fill','#94a3b8').text('South Pole — Antarctica');
+  g.append('text').attr('x',w/2).attr('y',h-6).attr('text-anchor','middle').attr('font-size','10').attr('fill','#94a3b8').text('South Pole — Antarctica');
+
+  // ── d3.zoom 설정 ──────────────────────────────────────────
+  zoomBehavior=d3.zoom()
+    .scaleExtent([1,12])          // 최소 1x ~ 최대 12x
+    .translateExtent([[0,0],[w,h]]) // 지도 범위 밖으로 드래그 안됨
+    .filter(event=>{
+      // 마우스 휠, 터치, 드래그 허용 / 더블클릭 줌은 국가 클릭과 충돌하므로 제외
+      return !event.button && event.type!=='dblclick';
+    })
+    .on('start',()=>{
+      document.getElementById('map-svg').classList.add('dragging');
+      tip.style.opacity='0';
+    })
+    .on('zoom',event=>{
+      g.attr('transform',event.transform);
+      // 줌 레벨에 따라 국경선 두께 조정
+      const k=event.transform.k;
+      g.selectAll('.country-path').attr('stroke-width', 0.4/k);
+      g.selectAll('.mesh-path').attr('stroke-width', 0.4/k);
+    })
+    .on('end',()=>{
+      document.getElementById('map-svg').classList.remove('dragging');
+    });
+
+  svg.call(zoomBehavior);
+
+  // 줌 버튼
+  document.getElementById('zoomIn').onclick=()=>{
+    svg.transition().duration(300).call(zoomBehavior.scaleBy,1.6);
+  };
+  document.getElementById('zoomOut').onclick=()=>{
+    svg.transition().duration(300).call(zoomBehavior.scaleBy,1/1.6);
+  };
+  document.getElementById('zoomReset').onclick=()=>{
+    svg.transition().duration(400).call(zoomBehavior.transform,d3.zoomIdentity);
+  };
+
+  // 더블클릭으로 해당 국가 중심 확대
+  svg.on('dblclick',function(event){
+    const target=event.target;
+    const id=target.dataset&&+target.dataset.id;
+    if(!id||!ISO_MAP[id]) return;
+    const bounds=path.bounds(countries.find(c=>+c.id===id));
+    const cx=(bounds[0][0]+bounds[1][0])/2;
+    const cy=(bounds[0][1]+bounds[1][1])/2;
+    const dx=bounds[1][0]-bounds[0][0];
+    const dy=bounds[1][1]-bounds[0][1];
+    const scale=Math.min(8, 0.85/Math.max(dx/w, dy/h));
+    const tx=w/2-scale*cx;
+    const ty=h/2-scale*cy;
+    svg.transition().duration(500)
+      .call(zoomBehavior.transform, d3.zoomIdentity.translate(tx,ty).scale(scale));
+  });
+
   document.getElementById('loading').style.display='none';
   document.getElementById('map-svg').style.display='block';
 }
 
 function refreshPaths(){
-  d3.selectAll('.country-path').attr('class',d=>{
+  d3.select('#map-g').selectAll('.country-path').attr('class',d=>{
     const id=+d.id;
     if(id===ANTARCTICA) return 'country-path antarctica';
     let c='country-path';
